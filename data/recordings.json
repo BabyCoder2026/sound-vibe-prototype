@@ -1,0 +1,52 @@
+{
+  "landslide_fm_studio": {
+    "title": "Landslide (Studio)",
+    "artist": "Fleetwood Mac",
+    "energy": 0.32,
+    "tempo": 76,
+    "loudness": -14.1,
+    "danceability": 0.41,
+    "acousticness": 0.87,
+    "valence": 0.44
+  },
+  "landslide_fm_live": {
+    "title": "Landslide (The Dance – Live)",
+    "artist": "Fleetwood Mac",
+    "energy": 0.46,
+    "tempo": 78,
+    "loudness": -11.3,
+    "danceability": 0.39,
+    "acousticness": 0.82,
+    "valence": 0.51
+  },
+  "landslide_chicks": {
+    "title": "Landslide",
+    "artist": "The Chicks",
+    "energy": 0.55,
+    "tempo": 80,
+    "loudness": -9.8,
+    "danceability": 0.52,
+    "acousticness": 0.61,
+    "valence": 0.62
+  },
+  "beth_criss": {
+    "title": "Beth",
+    "artist": "KISS (Peter Criss)",
+    "energy": 0.40,
+    "tempo": 71,
+    "loudness": -12.6,
+    "danceability": 0.35,
+    "acousticness": 0.54,
+    "valence": 0.48
+  },
+  "beth_carr": {
+    "title": "Beth",
+    "artist": "KISS (Eric Carr)",
+    "energy": 0.58,
+    "tempo": 74,
+    "loudness": -9.9,
+    "danceability": 0.44,
+    "acousticness": 0.38,
+    "valence": 0.57
+  }
+}

@@ -17,27 +17,32 @@ def distance(a, b):
 def explain_difference(base, other):
     explanations = []
 
-    feature_labels = {
-        "energy": "intensity",
-        "tempo": "pace",
-        "loudness": "overall loudness",
-        "danceability": "rhythmic drive",
-        "acousticness": "acoustic texture",
-        "valence": "emotional brightness"
-    }
-
     for f in FEATURES:
         diff = other[f] - base[f]
 
         if abs(diff) < 0.05:
             continue
 
-        label = feature_labels.get(f, f)
+        if f == "energy":
+            phrase = "more energetic and driven" if diff > 0 else "more subdued and restrained"
 
-        if diff > 0:
-            phrase = f"more {label}"
+        elif f == "tempo":
+            phrase = "slightly faster in feel" if diff > 0 else "slightly slower and more relaxed"
+
+        elif f == "loudness":
+            phrase = "louder and more present" if diff > 0 else "quieter and more intimate"
+
+        elif f == "danceability":
+            phrase = "more rhythmically engaging" if diff > 0 else "less rhythm-focused"
+
+        elif f == "acousticness":
+            phrase = "more stripped-down and acoustic" if diff > 0 else "more polished and produced"
+
+        elif f == "valence":
+            phrase = "emotionally brighter" if diff > 0 else "more emotionally reflective"
+
         else:
-            phrase = f"less {label}"
+            continue
 
         explanations.append(phrase)
 

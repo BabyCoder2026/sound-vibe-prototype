@@ -118,7 +118,6 @@ def search_musicbrainz(query):
 except Exception:
     # Network/JSON errors → return empty results instead of 500
     return []
-    results = []
 
     for rec in data.get("recordings", []):
         title = rec.get("title", "")

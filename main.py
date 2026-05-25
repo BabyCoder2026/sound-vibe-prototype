@@ -84,7 +84,6 @@ HTML = """
 </body>
 </html>
 """
-
 @app.route("/")
 def index():
     q = request.args.get("q", "").lower()
@@ -103,13 +102,13 @@ def index():
     base = matches[0]
 
     recs = []
-   for d in DATA.values():
-    if d == base:
-        continue
-    rec = d.copy()
-    rec["dist"] = distance(base, d)
-    rec["explanation"] = explain_difference(base, d)
-    recs.append(rec)
+    for d in DATA.values():
+        if d == base:
+            continue
+        rec = d.copy()
+        rec["dist"] = distance(base, d)
+        rec["explanation"] = explain_difference(base, d)
+        recs.append(rec)
 
     recs = sorted(recs, key=lambda x: x["dist"])[:10]
 
@@ -119,7 +118,6 @@ def index():
         recs=recs,
         features=FEATURES
     )
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))
     app.run(host="0.0.0.0", port=port)

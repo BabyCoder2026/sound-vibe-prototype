@@ -51,21 +51,15 @@ def search_musicbrainz(query):
         "User-Agent": "SoundVibePrototype/1.0 (test@example.com)"
     }
 
-    # Heuristic: try to split "song - artist" or "song artist"
-    q = query.strip()
-
-    # If user types "Landslide Fleetwood Mac", we treat last 2-3 words as artist if possible.
+    q = (query or "").strip()
     parts = q.split()
     artist_guess = ""
     title_guess = q
 
-    # Very simple heuristic: if query has 3+ words, assume last 2 words are artist.
     if len(parts) >= 3:
         artist_guess = " ".join(parts[-2:])
         title_guess = " ".join(parts[:-2])
 
-    # Build a fielded MusicBrainz query:
-    # recording:"Landslide" AND artist:"Fleetwood Mac"
     if artist_guess and title_guess:
         mb_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
     else:
@@ -75,25 +69,31 @@ def search_musicbrainz(query):
 
     r = requests.get(url, headers=headers, params=params, timeout=15)
     r.raise_for_status()
-    data = r.json()
 
+    data = r.json()
     results = []
+
     for rec in data.get("recordings", []):
         title = rec.get("title", "")
-        artist = rec.get("artist-credit", [{}])[0].get("name", "Unknown")
+
+        # SAFELY get artist name (prevents 500 errors)
+        artist_credit = rec.get("artist-credit") or []
+        if artist_credit and isinstance(artist_credit, list):
+            artist_name = artist_credit[0].get("name", "Unknown") if isinstance(artist_credit[0], dict) else "Unknown"
+        else:
+            artist_name = "Unknown"
+
+        mbid = rec.get("id", "")
 
         results.append({
             "title": title,
-            "artist": artist,
-            "mbid": rec.get("id", "")
+            "artist": artist_name,
+            "mbid": mbid
         })
 
     # Filter out obvious cover entries unless user typed "cover"
     if "cover" not in q.lower():
-        results = [
-            r for r in results
-            if "cover" not in r["title"].lower()
-        ]
+        results = [x for x in results if "cover" not in (x["title"] or "").lower()]
 
     return results[:5]
 

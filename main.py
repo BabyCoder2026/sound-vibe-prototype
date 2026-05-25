@@ -315,6 +315,70 @@ def mbtest():
     q = "Landslide Fleetwood Mac"
     return {"query_sent": q, "results": search_musicbrainz(q)}
 
+@app.route("/mbdebug")
+def mbdebug():
+    q = "Landslide Fleetwood Mac"
+    url = "https://musicbrainz.org/ws/2/recording/"
+    headers = {"User-Agent": "SoundVibePrototype/1.0 (your-real-email@example.com)"}
+
+    parts = q.split()
+    artist_guess = " ".join(parts[-2:]) if len(parts) >= 3 else ""
+    title_guess = " ".join(parts[:-2]) if len(parts) >= 3 else q
+
+    strict_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"' if artist_guess else q
+
+    def call_mb(query_string):
+        params = {"query": query_string, "fmt": "json", "limit": 10}
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        status = r.status_code
+        data = r.json() if status == 200 else {}
+        recs = data.get("recordings", []) or []
+        preview = []
+        for rec in recs[:5]:
+            ac = rec.get("artist-credit") or []
+            artist = ac[0].get("name", "Unknown") if ac and isinstance(ac[0], dict) else "Unknown"
+            preview.append({"title": rec.get("title", ""), "artist": artist})
+        return {"status": status, "count": len(recs), "preview": preview, "raw": recs}
+
+    # 1) strict results
+    strict = call_mb(strict_query)
+
+    # 2) fallback results
+    fallback = call_mb(q)
+
+    # Now simulate your filtering logic on fallback (so we can see what kills results)
+    filtered_preview = []
+    for item in fallback["preview"]:
+        title = item["title"].lower()
+        artist = item["artist"].lower()
+
+        # artist contains filter
+        if artist_guess and artist_guess.lower() not in artist:
+            continue
+
+        # cover filter (only if user didn't type "cover")
+        if "cover" not in q.lower():
+            if "cover" in title:
+                continue
+            if "(" in title and "fleetwood mac" in title:
+                continue
+
+        filtered_preview.append(item)
+
+    return {
+        "query_sent": q,
+        "artist_guess": artist_guess,
+        "title_guess": title_guess,
+        "strict_query": strict_query,
+        "strict_status": strict["status"],
+        "strict_count": strict["count"],
+        "strict_preview": strict["preview"],
+        "fallback_status": fallback["status"],
+        "fallback_count": fallback["count"],
+        "fallback_preview": fallback["preview"],
+        "filtered_preview_after_rules": filtered_preview
+    }
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))
     app.run(host="0.0.0.0", port=port)

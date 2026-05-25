@@ -2,11 +2,15 @@ from flask import Flask, request, render_template_string
 import math
 import json
 import os
+import requests
 
 app = Flask(__name__)
 
-# Load dataset
-with open("data/recordings.json") as f:
+# Load dataset (static for now)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "data", "recordings.json")
+
+with open(DATA_PATH) as f:
     DATA = json.load(f)
 
 FEATURES = ["energy", "tempo", "loudness", "danceability", "acousticness", "valence"]
@@ -19,34 +23,44 @@ def explain_difference(base, other):
 
     for f in FEATURES:
         diff = other[f] - base[f]
-
         if abs(diff) < 0.05:
             continue
 
         if f == "energy":
             phrase = "more energetic and driven" if diff > 0 else "more subdued and restrained"
-
         elif f == "tempo":
             phrase = "slightly faster in feel" if diff > 0 else "slightly slower and more relaxed"
-
         elif f == "loudness":
             phrase = "louder and more present" if diff > 0 else "quieter and more intimate"
-
         elif f == "danceability":
             phrase = "more rhythmically engaging" if diff > 0 else "less rhythm-focused"
-
         elif f == "acousticness":
             phrase = "more stripped-down and acoustic" if diff > 0 else "more polished and produced"
-
         elif f == "valence":
             phrase = "emotionally brighter" if diff > 0 else "more emotionally reflective"
-
         else:
             continue
 
         explanations.append(phrase)
 
     return explanations[:3]
+
+def search_musicbrainz(query):
+    url = "https://musicbrainz.org/ws/2/recording/"
+    headers = {
+        # Put your real email here later; MusicBrainz likes a real contact in UA
+        "User-Agent": "SoundVibePrototype/1.0 (test@example.com)"
+    }
+    params = {"query": query, "fmt": "json", "limit": 5}
+    r = requests.get(url, headers=headers, params=params, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+
+    results = []
+    for rec in data.get("recordings", []):
+        artist = rec.get("artist-credit", [{}])[0].get("name", "Unknown")
+        results.append({"title": rec.get("title", ""), "artist": artist, "mbid": rec.get("id", "")})
+    return results
 
 HTML = """
 <!doctype html>
@@ -55,9 +69,11 @@ HTML = """
   <title>Sound Vibe Prototype</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 30px; }
-    input { padding: 8px; width: 250px; }
+    input { padding: 8px; width: 280px; }
     button { padding: 8px 12px; cursor: pointer; }
     ul { line-height: 1.6; }
+    li { margin-bottom: 10px; }
+    small { color: #333; }
   </style>
 </head>
 <body>
@@ -65,7 +81,7 @@ HTML = """
 <h2>Sound Similarity Prototype</h2>
 
 <form method="get">
-  <input name="q" placeholder="Enter song or artist" size="40">
+  <input name="q" placeholder="Enter song or artist" size="40" value="{{ q|default('') }}">
   <button type="submit">Analyze</button>
 </form>
 
@@ -85,16 +101,12 @@ HTML = """
 <ol>
 {% for r in recs %}
   <li>
-  <b>{{ r["title"] }}</b> — {{ r["artist"] }}
-  <br>
-  <small>
+    <b>{{ r["title"] }}</b> — {{ r["artist"] }}
+    <br>
     {% if r["explanation"] %}
-  <small>
-    This version feels {{ r["explanation"] | join(", ") }}.
-  </small>
-{% endif %}
-  </small>
-</li>
+      <small>This version feels {{ r["explanation"] | join(", ") }}.</small>
+    {% endif %}
+  </li>
 {% endfor %}
 </ol>
 {% endif %}
@@ -102,20 +114,19 @@ HTML = """
 </body>
 </html>
 """
+
 @app.route("/")
 def index():
     q = request.args.get("q", "").lower()
-
     if not q:
-        return render_template_string(HTML)
+        return render_template_string(HTML, q="")
 
     matches = [
         d for d in DATA.values()
         if q in d["title"].lower() or q in d["artist"].lower()
     ]
-
     if not matches:
-        return render_template_string(HTML)
+        return render_template_string(HTML, q=request.args.get("q", ""))
 
     base = matches[0]
 
@@ -129,13 +140,13 @@ def index():
         recs.append(rec)
 
     recs = sorted(recs, key=lambda x: x["dist"])[:10]
+    return render_template_string(HTML, q=request.args.get("q", ""), base=base, recs=recs, features=FEATURES)
 
-    return render_template_string(
-        HTML,
-        base=base,
-        recs=recs,
-        features=FEATURES
-    )
+# ✅ Temporary test endpoint to prove MusicBrainz works
+@app.route("/mbtest")
+def mbtest():
+    return {"results": search_musicbrainz("Landslide Fleetwood Mac")}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))
     app.run(host="0.0.0.0", port=port)

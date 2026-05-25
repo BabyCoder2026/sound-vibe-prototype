@@ -89,9 +89,7 @@ def explain_difference(base, other):
 
 def search_musicbrainz(query):
     url = "https://musicbrainz.org/ws/2/recording/"
-    headers = {
-        "User-Agent": "SoundVibePrototype/1.0 (test@example.com)"
-    }
+    headers = {"User-Agent": "SoundVibePrototype/1.0 (test@example.com)"}
 
     q = (query or "").strip()
     parts = q.split()
@@ -109,35 +107,29 @@ def search_musicbrainz(query):
 
     params = {"query": mb_query, "fmt": "json", "limit": 10}
 
-   try:
-    r = requests.get(url, headers=headers, params=params, timeout=15)
-    if r.status_code != 200:
-        # Don’t crash the whole app if MusicBrainz is down or rate-limiting
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+    except Exception:
         return []
-    data = r.json()
-except Exception:
-    # Network/JSON errors → return empty results instead of 500
-    return []
 
+    results = []
     for rec in data.get("recordings", []):
         title = rec.get("title", "")
-
-        # SAFELY get artist name (prevents 500 errors)
         artist_credit = rec.get("artist-credit") or []
-        if artist_credit and isinstance(artist_credit, list):
-            artist_name = artist_credit[0].get("name", "Unknown") if isinstance(artist_credit[0], dict) else "Unknown"
+        if artist_credit and isinstance(artist_credit, list) and isinstance(artist_credit[0], dict):
+            artist_name = artist_credit[0].get("name", "Unknown")
         else:
             artist_name = "Unknown"
-
-        mbid = rec.get("id", "")
 
         results.append({
             "title": title,
             "artist": artist_name,
-            "mbid": mbid
+            "mbid": rec.get("id", "")
         })
 
-    # Filter out obvious cover entries unless user typed "cover"
     if "cover" not in q.lower():
         results = [x for x in results if "cover" not in (x["title"] or "").lower()]
 

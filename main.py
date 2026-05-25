@@ -89,23 +89,27 @@ def explain_difference(base, other):
 
 def search_musicbrainz(query):
     url = "https://musicbrainz.org/ws/2/recording/"
-    headers = {"User-Agent": "SoundVibePrototype/1.0 (christyschooldocs@gmail.com)"}
+    headers = {"User-Agent": "SoundVibePrototype/1.0 (your-real-email@example.com)"}
 
     q = (query or "").strip()
     parts = q.split()
+
+    # Default guesses
     artist_guess = ""
     title_guess = q
 
+    # Heuristic: if query ends with "Fleetwood Mac" (or any two words), treat them as artist
     if len(parts) >= 3:
         artist_guess = " ".join(parts[-2:])
         title_guess = " ".join(parts[:-2])
 
+    # Build a strict fielded query when we have both title + artist
     if artist_guess and title_guess:
         mb_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
     else:
-        mb_query = f'recording:"{q}"'
+        mb_query = q
 
-    params = {"query": mb_query, "fmt": "json", "limit": 10}
+    params = {"query": mb_query, "fmt": "json", "limit": 15}
 
     try:
         r = requests.get(url, headers=headers, params=params, timeout=15)
@@ -125,15 +129,22 @@ def search_musicbrainz(query):
         else:
             artist_name = "Unknown"
 
+        # Post-filter: if user gave an artist, only keep exact artist matches
+        if artist_guess and artist_name.lower() != artist_guess.lower():
+            continue
+
+        # Post-filter: remove obvious “this is a cover of Fleetwood Mac” titles
+        t = title.lower()
+        if "cover" in t:
+            continue
+        if "(" in t and "fleetwood mac" in t:
+            continue
+
         results.append({
             "title": title,
             "artist": artist_name,
             "mbid": rec.get("id", "")
         })
-
-    # Filter out obvious cover entries unless the user explicitly typed "cover"
-    if "cover" not in q.lower():
-        results = [x for x in results if "cover" not in (x["title"] or "").lower()]
 
     return results[:5]
 
@@ -295,21 +306,7 @@ def index():
 @app.route("/mbtest")
 def mbtest():
     q = "Landslide Fleetwood Mac"
-    url = "https://musicbrainz.org/ws/2/recording/"
-    headers = {"User-Agent": "SoundVibePrototype/1.0 (your-real-email@example.com)"}
-    params = {"query": q, "fmt": "json", "limit": 5}
-
-    try:
-        r = requests.get(url, headers=headers, params=params, timeout=15)
-        data = r.json() if r.status_code == 200 else {}
-        return {
-            "status_code": r.status_code,
-            "query_sent": q,
-            "recordings_count": len(data.get("recordings", [])),
-            "first_recording": data.get("recordings", [None])[0],
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    return {"query_sent": q, "results": search_musicbrainz(q)}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))

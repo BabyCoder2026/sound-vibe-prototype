@@ -105,12 +105,7 @@ def search_musicbrainz(query):
     else:
         mb_query = f'recording:"{q}"'
 
-    params = {
-    "query": mb_query,
-    "fmt": "json",
-    "limit": 10,
-    "inc": "releases"
-}
+    params = {"query": mb_query, "fmt": "json", "limit": 10}
 
     try:
         r = requests.get(url, headers=headers, params=params, timeout=15)
@@ -123,28 +118,20 @@ def search_musicbrainz(query):
     results = []
     for rec in data.get("recordings", []):
         title = rec.get("title", "")
+
         artist_credit = rec.get("artist-credit") or []
         if artist_credit and isinstance(artist_credit, list) and isinstance(artist_credit[0], dict):
             artist_name = artist_credit[0].get("name", "Unknown")
         else:
             artist_name = "Unknown"
 
-        releases = rec.get("releases") or []
-release_title = ""
-release_date = ""
+        results.append({
+            "title": title,
+            "artist": artist_name,
+            "mbid": rec.get("id", "")
+        })
 
-if releases and isinstance(releases, list) and isinstance(releases[0], dict):
-    release_title = releases[0].get("title", "")
-    release_date = releases[0].get("date", "")
-
-results.append({
-    "title": title,
-    "artist": artist_name,
-    "mbid": rec.get("id", ""),
-    "release_title": release_title,
-    "release_date": release_date
-})
-
+    # Filter out obvious cover entries unless the user explicitly typed "cover"
     if "cover" not in q.lower():
         results = [x for x in results if "cover" not in (x["title"] or "").lower()]
 

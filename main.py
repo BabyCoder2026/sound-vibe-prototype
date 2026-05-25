@@ -105,7 +105,12 @@ def search_musicbrainz(query):
     else:
         mb_query = f'recording:"{q}"'
 
-    params = {"query": mb_query, "fmt": "json", "limit": 10}
+    params = {
+    "query": mb_query,
+    "fmt": "json",
+    "limit": 10,
+    "inc": "releases"
+}
 
     try:
         r = requests.get(url, headers=headers, params=params, timeout=15)
@@ -124,11 +129,21 @@ def search_musicbrainz(query):
         else:
             artist_name = "Unknown"
 
-        results.append({
-            "title": title,
-            "artist": artist_name,
-            "mbid": rec.get("id", "")
-        })
+        releases = rec.get("releases") or []
+release_title = ""
+release_date = ""
+
+if releases and isinstance(releases, list) and isinstance(releases[0], dict):
+    release_title = releases[0].get("title", "")
+    release_date = releases[0].get("date", "")
+
+results.append({
+    "title": title,
+    "artist": artist_name,
+    "mbid": rec.get("id", ""),
+    "release_title": release_title,
+    "release_date": release_date
+})
 
     if "cover" not in q.lower():
         results = [x for x in results if "cover" not in (x["title"] or "").lower()]
@@ -175,7 +190,11 @@ HTML = """
             <label>
               <input type="radio" name="mbid" value="{{ r.mbid }}" {% if selected_mbid == r.mbid %}checked{% endif %}>
               <span class="mb-title">{{ r.title }}</span> — {{ r.artist }}
-              <small class="muted">(MBID: {{ r.mbid }})</small>
+{% if r.release_title %}
+  <small class="muted"> — {{ r.release_title }}{% if r.release_date %} ({{ r.release_date }}){% endif %}</small>
+{% endif %}
+<br>
+<small class="muted">(MBID: {{ r.mbid }})</small>
             </label>
           </div>
         {% endfor %}

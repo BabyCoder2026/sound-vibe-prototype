@@ -109,10 +109,15 @@ def search_musicbrainz(query):
 
     params = {"query": mb_query, "fmt": "json", "limit": 10}
 
+   try:
     r = requests.get(url, headers=headers, params=params, timeout=15)
-    r.raise_for_status()
-
+    if r.status_code != 200:
+        # Don’t crash the whole app if MusicBrainz is down or rate-limiting
+        return []
     data = r.json()
+except Exception:
+    # Network/JSON errors → return empty results instead of 500
+    return []
     results = []
 
     for rec in data.get("recordings", []):

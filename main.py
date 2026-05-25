@@ -14,6 +14,24 @@ FEATURES = ["energy", "tempo", "loudness", "danceability", "acousticness", "vale
 def distance(a, b):
     return math.sqrt(sum((a[f] - b[f]) ** 2 for f in FEATURES))
 
+def explain_difference(base, other):
+    explanations = []
+
+    for f in FEATURES:
+        diff = other[f] - base[f]
+
+        if abs(diff) < 0.05:
+            continue
+
+        if diff > 0:
+            direction = "higher"
+        else:
+            direction = "lower"
+
+        explanations.append(f"{f} is {direction} by {abs(diff):.2f}")
+
+    return explanations[:3]  # limit to top 3 differences
+
 HTML = """
 <!doctype html>
 <html>
@@ -51,9 +69,14 @@ HTML = """
 <ol>
 {% for r in recs %}
   <li>
-    <b>{{ r["title"] }}</b> — {{ r["artist"] }}
-    (distance: {{ "%.3f"|format(r["dist"]) }})
-  </li>
+  <b>{{ r["title"] }}</b> — {{ r["artist"] }}
+  <br>
+  <small>
+    {% for e in r["explanation"] %}
+      • {{ e }}<br>
+    {% endfor %}
+  </small>
+</li>
 {% endfor %}
 </ol>
 {% endif %}
@@ -80,12 +103,13 @@ def index():
     base = matches[0]
 
     recs = []
-    for d in DATA.values():
-        if d == base:
-            continue
-        rec = d.copy()
-        rec["dist"] = distance(base, d)
-        recs.append(rec)
+   for d in DATA.values():
+    if d == base:
+        continue
+    rec = d.copy()
+    rec["dist"] = distance(base, d)
+    rec["explanation"] = explain_difference(base, d)
+    recs.append(rec)
 
     recs = sorted(recs, key=lambda x: x["dist"])[:10]
 

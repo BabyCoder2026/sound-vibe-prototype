@@ -3,6 +3,7 @@ import math
 import json
 import os
 import requests
+import time
 
 app = Flask(__name__)
 
@@ -100,9 +101,14 @@ MB_HEADERS = {
     # Use a real email here if you want; MB prefers a contact.
     "User-Agent": "SoundVibePrototype/1.0 (contact@example.com)"
 }
+MB_CACHE = {}  # query -> {"ts": float, "results": list}
+MB_CACHE_TTL_SECONDS = 60 * 10  # 10 minutes
+MB_COOLDOWN_SECONDS = 1.1       # MusicBrainz requests should be ~1/sec or slower
+_last_mb_call_ts = 0.0
 
 def _safe_get_json(url, headers, params):
     try:
+        _rate_limit_musicbrainz()
         r = requests.get(url, headers=headers, params=params, timeout=15)
         status = r.status_code
         if status != 200:
@@ -115,6 +121,14 @@ def _safe_get_json(url, headers, params):
     except Exception:
         return None, {}
 
+def _rate_limit_musicbrainz():
+    global _last_mb_call_ts
+    now = time.time()
+    elapsed = now - _last_mb_call_ts
+    if elapsed < MB_COOLDOWN_SECONDS:
+        time.sleep(MB_COOLDOWN_SECONDS - elapsed)
+    _last_mb_call_ts = time.time()
+
 def search_musicbrainz(query):
     """
     Returns list of dicts:
@@ -123,6 +137,12 @@ def search_musicbrainz(query):
     q = (query or "").strip()
     if not q:
         return []
+
+    # Cache hit?
+cached = MB_CACHE.get(q)
+now = time.time()
+if cached and (now - cached["ts"] < MB_CACHE_TTL_SECONDS):
+    return cached["results"]
 
     parts = q.split()
 
@@ -185,6 +205,10 @@ def search_musicbrainz(query):
             "first_release_date": frd
         })
 
+    final_results = results[:5]
+MB_CACHE[q] = {"ts": time.time(), "results": final_results}
+return final_results
+    
     return results[:5]
 
 # -----------------------

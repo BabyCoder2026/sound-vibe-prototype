@@ -94,33 +94,39 @@ def search_musicbrainz(query):
     q = (query or "").strip()
     parts = q.split()
 
-    # Default guesses
     artist_guess = ""
     title_guess = q
 
-    # Heuristic: if query ends with "Fleetwood Mac" (or any two words), treat them as artist
     if len(parts) >= 3:
         artist_guess = " ".join(parts[-2:])
         title_guess = " ".join(parts[:-2])
 
-    # Build a strict fielded query when we have both title + artist
+    # Strict query first (best when it works)
     if artist_guess and title_guess:
-        mb_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
+        strict_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
     else:
-        mb_query = q
+        strict_query = q
 
-    params = {"query": mb_query, "fmt": "json", "limit": 15}
-
-    try:
+    def run_query(qstring):
+        params = {"query": qstring, "fmt": "json", "limit": 15}
         r = requests.get(url, headers=headers, params=params, timeout=15)
         if r.status_code != 200:
             return []
         data = r.json()
+        return data.get("recordings", []) or []
+
+    try:
+        recordings = run_query(strict_query)
+
+        # Fallback: if strict returns nothing, try broader search
+        if not recordings:
+            recordings = run_query(q)
+
     except Exception:
         return []
 
     results = []
-    for rec in data.get("recordings", []):
+    for rec in recordings:
         title = rec.get("title", "")
 
         artist_credit = rec.get("artist-credit") or []
@@ -129,16 +135,17 @@ def search_musicbrainz(query):
         else:
             artist_name = "Unknown"
 
-        # Post-filter: if user gave an artist, only keep exact artist matches
-        if artist_guess and artist_name.lower() != artist_guess.lower():
+        # Artist filter: contains-match (not exact), only if we guessed an artist
+        if artist_guess and artist_guess.lower() not in artist_name.lower():
             continue
 
-        # Post-filter: remove obvious “this is a cover of Fleetwood Mac” titles
+        # Remove obvious cover indicators unless the user typed "cover"
         t = title.lower()
-        if "cover" in t:
-            continue
-        if "(" in t and "fleetwood mac" in t:
-            continue
+        if "cover" not in q.lower():
+            if "cover" in t:
+                continue
+            if "(" in t and "fleetwood mac" in t:
+                continue
 
         results.append({
             "title": title,

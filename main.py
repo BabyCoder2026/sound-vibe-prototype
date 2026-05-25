@@ -17,20 +17,31 @@ def distance(a, b):
 def explain_difference(base, other):
     explanations = []
 
+    feature_labels = {
+        "energy": "intensity",
+        "tempo": "pace",
+        "loudness": "overall loudness",
+        "danceability": "rhythmic drive",
+        "acousticness": "acoustic texture",
+        "valence": "emotional brightness"
+    }
+
     for f in FEATURES:
         diff = other[f] - base[f]
 
         if abs(diff) < 0.05:
             continue
 
+        label = feature_labels.get(f, f)
+
         if diff > 0:
-            direction = "higher"
+            phrase = f"more {label}"
         else:
-            direction = "lower"
+            phrase = f"less {label}"
 
-        explanations.append(f"{f} is {direction} by {abs(diff):.2f}")
+        explanations.append(phrase)
 
-    return explanations[:3]  # limit to top 3 differences
+    return explanations[:3]
 
 HTML = """
 <!doctype html>
@@ -72,9 +83,11 @@ HTML = """
   <b>{{ r["title"] }}</b> — {{ r["artist"] }}
   <br>
   <small>
-    {% for e in r["explanation"] %}
-      • {{ e }}<br>
-    {% endfor %}
+    {% if r["explanation"] %}
+  <small>
+    This version feels {{ r["explanation"] | join(", ") }}.
+  </small>
+{% endif %}
   </small>
 </li>
 {% endfor %}

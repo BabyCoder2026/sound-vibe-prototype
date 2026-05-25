@@ -48,19 +48,54 @@ def explain_difference(base, other):
 def search_musicbrainz(query):
     url = "https://musicbrainz.org/ws/2/recording/"
     headers = {
-        # Put your real email here later; MusicBrainz likes a real contact in UA
         "User-Agent": "SoundVibePrototype/1.0 (test@example.com)"
     }
-    params = {"query": query, "fmt": "json", "limit": 5}
+
+    # Heuristic: try to split "song - artist" or "song artist"
+    q = query.strip()
+
+    # If user types "Landslide Fleetwood Mac", we treat last 2-3 words as artist if possible.
+    parts = q.split()
+    artist_guess = ""
+    title_guess = q
+
+    # Very simple heuristic: if query has 3+ words, assume last 2 words are artist.
+    if len(parts) >= 3:
+        artist_guess = " ".join(parts[-2:])
+        title_guess = " ".join(parts[:-2])
+
+    # Build a fielded MusicBrainz query:
+    # recording:"Landslide" AND artist:"Fleetwood Mac"
+    if artist_guess and title_guess:
+        mb_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
+    else:
+        mb_query = f'recording:"{q}"'
+
+    params = {"query": mb_query, "fmt": "json", "limit": 10}
+
     r = requests.get(url, headers=headers, params=params, timeout=15)
     r.raise_for_status()
     data = r.json()
 
     results = []
     for rec in data.get("recordings", []):
+        title = rec.get("title", "")
         artist = rec.get("artist-credit", [{}])[0].get("name", "Unknown")
-        results.append({"title": rec.get("title", ""), "artist": artist, "mbid": rec.get("id", "")})
-    return results
+
+        results.append({
+            "title": title,
+            "artist": artist,
+            "mbid": rec.get("id", "")
+        })
+
+    # Filter out obvious cover entries unless user typed "cover"
+    if "cover" not in q.lower():
+        results = [
+            r for r in results
+            if "cover" not in r["title"].lower()
+        ]
+
+    return results[:5]
 
 HTML = """
 <!doctype html>

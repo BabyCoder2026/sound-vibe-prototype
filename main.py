@@ -294,7 +294,22 @@ def index():
 # ✅ Temporary test endpoint to prove MusicBrainz works
 @app.route("/mbtest")
 def mbtest():
-    return {"results": search_musicbrainz("Landslide Fleetwood Mac")}
+    q = "Landslide Fleetwood Mac"
+    url = "https://musicbrainz.org/ws/2/recording/"
+    headers = {"User-Agent": "SoundVibePrototype/1.0 (your-real-email@example.com)"}
+    params = {"query": q, "fmt": "json", "limit": 5}
+
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        data = r.json() if r.status_code == 200 else {}
+        return {
+            "status_code": r.status_code,
+            "query_sent": q,
+            "recordings_count": len(data.get("recordings", [])),
+            "first_recording": data.get("recordings", [None])[0],
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))

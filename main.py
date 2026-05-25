@@ -15,6 +15,48 @@ with open(DATA_PATH) as f:
 
 FEATURES = ["energy", "tempo", "loudness", "danceability", "acousticness", "valence"]
 
+def pick_best_local_match(selected_title, selected_artist):
+    """
+    We don't have live audio features yet, so we map the selected MusicBrainz recording
+    to the closest local dataset entry by title/artist text match.
+    """
+    st = (selected_title or "").lower()
+    sa = (selected_artist or "").lower()
+
+    best = None
+    best_score = -1
+
+    for d in DATA.values():
+        dt = d["title"].lower()
+        da = d["artist"].lower()
+
+        score = 0
+        # Title match weight
+        if st and st in dt:
+            score += 3
+        if dt and dt in st:
+            score += 2
+
+        # Artist match weight
+        if sa and sa in da:
+            score += 3
+        if da and da in sa:
+            score += 2
+
+        # Small bonus for shared words
+        for w in set(st.split()):
+            if len(w) >= 4 and w in dt:
+                score += 1
+        for w in set(sa.split()):
+            if len(w) >= 4 and w in da:
+                score += 1
+
+        if score > best_score:
+            best_score = score
+            best = d
+
+    return best
+
 def distance(a, b):
     return math.sqrt(sum((a[f] - b[f]) ** 2 for f in FEATURES))
 
@@ -104,46 +146,78 @@ HTML = """
   <title>Sound Vibe Prototype</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 30px; }
-    input { padding: 8px; width: 280px; }
+    input { padding: 8px; width: 320px; }
     button { padding: 8px 12px; cursor: pointer; }
     ul { line-height: 1.6; }
     li { margin-bottom: 10px; }
     small { color: #333; }
+    .panel { border: 1px solid #ddd; padding: 14px; margin-top: 16px; border-radius: 6px; }
+    .muted { color:#666; }
+    .mb-item { margin: 8px 0; }
+    .mb-title { font-weight: 700; }
   </style>
 </head>
 <body>
 
 <h2>Sound Similarity Prototype</h2>
 
-<form method="get">
-  <input name="q" placeholder="Enter song or artist" size="40" value="{{ q|default('') }}">
-  <button type="submit">Analyze</button>
+<form method="get" action="/">
+  <input name="q" placeholder="Enter song or artist" value="{{ q|default('') }}">
+  <button type="submit">Search</button>
 </form>
 
-{% if base %}
-<hr>
-<h3>Base Recording</h3>
-<b>{{ base["title"] }}</b> — {{ base["artist"] }}
+{% if q %}
+  <div class="panel">
+    <h3>Which version did you mean?</h3>
+    <p class="muted">Pick one result below to analyze. (This always appears, even if the results look similar.)</p>
 
-<h4>Sound Profile</h4>
-<ul>
-{% for f in features %}
-  <li>{{ f }}: {{ "%.2f"|format(base[f]) }}</li>
-{% endfor %}
-</ul>
-
-<h3>Similar Recordings</h3>
-<ol>
-{% for r in recs %}
-  <li>
-    <b>{{ r["title"] }}</b> — {{ r["artist"] }}
-    <br>
-    {% if r["explanation"] %}
-      <small>This version feels {{ r["explanation"] | join(", ") }}.</small>
+    {% if mb_results and mb_results|length > 0 %}
+      <form method="get" action="/">
+        <input type="hidden" name="q" value="{{ q }}">
+        {% for r in mb_results %}
+          <div class="mb-item">
+            <label>
+              <input type="radio" name="mbid" value="{{ r.mbid }}" {% if selected_mbid == r.mbid %}checked{% endif %}>
+              <span class="mb-title">{{ r.title }}</span> — {{ r.artist }}
+              <small class="muted">(MBID: {{ r.mbid }})</small>
+            </label>
+          </div>
+        {% endfor %}
+        <button type="submit">Analyze Selected Version</button>
+      </form>
+    {% else %}
+      <p>No MusicBrainz results found for that query.</p>
     {% endif %}
-  </li>
-{% endfor %}
-</ol>
+  </div>
+{% endif %}
+
+{% if base %}
+  <hr>
+  <h3>Base Recording (Local Dataset Match)</h3>
+  <b>{{ base["title"] }}</b> — {{ base["artist"] }}
+
+  {% if selected_title and selected_artist %}
+    <p class="muted">Selected from MusicBrainz: <b>{{ selected_title }}</b> — {{ selected_artist }}</p>
+  {% endif %}
+
+  <h4>Sound Profile</h4>
+  <ul>
+  {% for f in features %}
+    <li>{{ f }}: {{ "%.2f"|format(base[f]) }}</li>
+  {% endfor %}
+  </ul>
+
+  <h3>Similar Recordings</h3>
+  <ol>
+  {% for r in recs %}
+    <li>
+      <b>{{ r["title"] }}</b> — {{ r["artist"] }}<br>
+      {% if r["explanation"] %}
+        <small>This version feels {{ r["explanation"] | join(", ") }}.</small>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ol>
 {% endif %}
 
 </body>
@@ -152,19 +226,46 @@ HTML = """
 
 @app.route("/")
 def index():
-    q = request.args.get("q", "").lower()
-    if not q:
-        return render_template_string(HTML, q="")
+    q_raw = request.args.get("q", "")
+    q = (q_raw or "").strip()
+    selected_mbid = request.args.get("mbid", "")
 
-    matches = [
-        d for d in DATA.values()
-        if q in d["title"].lower() or q in d["artist"].lower()
-    ]
-    if not matches:
-        return render_template_string(HTML, q=request.args.get("q", ""))
+    # Always fetch MusicBrainz results when q exists
+    mb_results = search_musicbrainz(q) if q else []
 
-    base = matches[0]
+    # If user searched but hasn't chosen a version yet:
+    if q and not selected_mbid:
+        return render_template_string(
+            HTML,
+            q=q_raw,
+            mb_results=mb_results,
+            selected_mbid="",
+            base=None
+        )
 
+    # If user picked a MusicBrainz version, find its title/artist
+    selected_title = ""
+    selected_artist = ""
+    if selected_mbid and mb_results:
+        for r in mb_results:
+            if r.get("mbid") == selected_mbid:
+                selected_title = r.get("title", "")
+                selected_artist = r.get("artist", "")
+                break
+
+    # Map selected MusicBrainz recording -> best local dataset entry
+    base = pick_best_local_match(selected_title, selected_artist) if selected_mbid else None
+    if not base:
+        # fallback: if something went weird, just show picker again
+        return render_template_string(
+            HTML,
+            q=q_raw,
+            mb_results=mb_results,
+            selected_mbid=selected_mbid,
+            base=None
+        )
+
+    # Compute recommendations as before
     recs = []
     for d in DATA.values():
         if d == base:
@@ -175,8 +276,19 @@ def index():
         recs.append(rec)
 
     recs = sorted(recs, key=lambda x: x["dist"])[:10]
-    return render_template_string(HTML, q=request.args.get("q", ""), base=base, recs=recs, features=FEATURES)
 
+    return render_template_string(
+        HTML,
+        q=q_raw,
+        mb_results=mb_results,
+        selected_mbid=selected_mbid,
+        selected_title=selected_title,
+        selected_artist=selected_artist,
+        base=base,
+        recs=recs,
+        features=FEATURES
+    )
+    
 # ✅ Temporary test endpoint to prove MusicBrainz works
 @app.route("/mbtest")
 def mbtest():

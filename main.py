@@ -89,7 +89,7 @@ def explain_difference(base, other):
 
 def search_musicbrainz(query):
     url = "https://musicbrainz.org/ws/2/recording/"
-    headers = {"User-Agent": "SoundVibePrototype/1.0 (test@example.com)"}
+    headers = {"User-Agent": "SoundVibePrototype/1.0 (christyschooldocs@gmail.com)"}
 
     q = (query or "").strip()
     parts = q.split()

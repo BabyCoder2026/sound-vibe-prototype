@@ -94,58 +94,66 @@ def search_musicbrainz(query):
     q = (query or "").strip()
     parts = q.split()
 
-    artist_guess = ""
-    title_guess = q
-
+    # If the user typed at least 3 words, we assume:
+    # Title = everything except last 2 words
+    # Artist = last 2 words
+    # This is exactly your "Landslide Fleetwood Mac" case.
     if len(parts) >= 3:
         artist_guess = " ".join(parts[-2:])
         title_guess = " ".join(parts[:-2])
 
-    # Strict query first (best when it works)
-    if artist_guess and title_guess:
         strict_query = f'recording:"{title_guess}" AND artist:"{artist_guess}"'
-    else:
-        strict_query = q
+        params = {"query": strict_query, "fmt": "json", "limit": 10}
 
-    def run_query(qstring):
-        params = {"query": qstring, "fmt": "json", "limit": 15}
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=15)
+            if r.status_code != 200:
+                return []
+            data = r.json()
+        except Exception:
+            return []
+
+        results = []
+        for rec in data.get("recordings", []) or []:
+            title = rec.get("title", "")
+
+            artist_credit = rec.get("artist-credit") or []
+            if artist_credit and isinstance(artist_credit, list) and isinstance(artist_credit[0], dict):
+                artist_name = artist_credit[0].get("name", "Unknown")
+            else:
+                artist_name = "Unknown"
+
+            # Strict: only keep the guessed artist
+            if artist_guess.lower() not in artist_name.lower():
+                continue
+
+            results.append({
+                "title": title,
+                "artist": artist_name,
+                "mbid": rec.get("id", "")
+            })
+
+        return results[:5]
+
+    # Otherwise (short queries like "Landslide"), use broad search
+    params = {"query": q, "fmt": "json", "limit": 10}
+
+    try:
         r = requests.get(url, headers=headers, params=params, timeout=15)
         if r.status_code != 200:
             return []
         data = r.json()
-        return data.get("recordings", []) or []
-
-    try:
-        recordings = run_query(strict_query)
-
-        # Fallback: if strict returns nothing, try broader search
-        if not recordings:
-            recordings = run_query(q)
-
     except Exception:
         return []
 
     results = []
-    for rec in recordings:
+    for rec in data.get("recordings", []) or []:
         title = rec.get("title", "")
-
         artist_credit = rec.get("artist-credit") or []
         if artist_credit and isinstance(artist_credit, list) and isinstance(artist_credit[0], dict):
             artist_name = artist_credit[0].get("name", "Unknown")
         else:
             artist_name = "Unknown"
-
-        # Artist filter: contains-match (not exact), only if we guessed an artist
-        if artist_guess and artist_guess.lower() not in artist_name.lower():
-            continue
-
-        # Remove obvious cover indicators unless the user typed "cover"
-        t = title.lower()
-        if "cover" not in q.lower():
-            if "cover" in t:
-                continue
-            if "(" in t and "fleetwood mac" in t:
-                continue
 
         results.append({
             "title": title,
